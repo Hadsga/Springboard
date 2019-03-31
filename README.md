@@ -4,7 +4,7 @@ The detailed curiculum can be found here: https://www.springboard.com/workshops/
 
 The documentation includes the folowing modules:
 
-Data Wrangling
-Exploratory Data Analysis
-Maschine Learning
-Capstone Project
+- Data Wrangling
+- Exploratory Data Analysis
+- Maschine Learning
+- Capstone Project
