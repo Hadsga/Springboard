@@ -1,0 +1,241 @@
+---
+title: "Capstone project - Data wrangling"
+output: md_document
+---
+
+```{r, echo=FALSE, include=FALSE}
+knitr::opts_chunk$set(error = TRUE)
+setwd("C:/Users/X1/Desktop/Springboard Data/Yelp")
+load("data_frames.RData")
+```
+
+
+####Packages
+```{r, warning=FALSE, message=FALSE}
+
+library(purrrlyr)
+library(plyr)
+library(tidyverse)
+library(knitr)
+library(MASS)
+
+```
+
+
+#1 Reading in of the data
+
+The dataset is a JSON file with multiple JSON values inside the file. Each JSON value is considered as an independent object. In this case, each information makes up one single JSON value. Therefore, there are many JSON values inside of the JSON  file. In this case, there is a need to use the "stream_in()" function instead of the "fromJSON()" function. Moreover, some columns are data frames which in turn contain different data frames. Flaten makes the nested hierarchical data structure of these columns into a flatten manner by assigning each of the nested variables as its own column as much as possible.
+
+
+    yelp = stream_in(file("yelp_academic_dataset_business.json"))
+    yelp_flat = flatten(yelp)
+    yelp_tbl = tbl_df(yelp_flat)
+
+#2  Discovering the data
+
+```{r}
+glimpse(yelp_tbl)
+```
+
+
+#3 Subsetting the data frame
+
+Since the goal of this analyses is to perform a market-analyses for Asian restaurants the data set will be subsetted. 
+
+##3.1 Filtering for Restaurants and Fast Food
+
+Let´s take a look at the most common categories in the data set. As you can see, the restaurant category is most frequent. 
+```{r}
+
+yelp_tbl %>%
+  dplyr::select(categories) %>%
+  filter(categories != "NULL") %>%
+  unnest(categories) %>% 
+  dplyr::count(categories) %>%
+  arrange(-n) %>%
+  head(10)
+
+```
+
+Now, all businesses will be filtered which belong to the category "Restaurants".
+```{r}
+
+yelp_tbl_restaurants = yelp_tbl %>%
+  filter(grepl("Restaurants", categories))
+
+```
+
+
+##2.2 Filtering for asian food categories
+
+Next, let´s take a look at the restaurant categories. 
+```{r}
+
+yelp_tbl_restaurants %>%
+  dplyr::select(categories) %>%
+  filter(categories != "NULL") %>%
+  unnest(categories) %>%
+  distinct() %>%
+  head(10)
+
+```
+
+Because the analysis is dealing with Asian restaurants only those restaurants will be kept which are offer Asian food. 
+```{r}
+
+asian_food_categories = c("Chinese", "Japanese", "Sushi Bars", "Indian", "Asian Fusion", "Thai", "Vietnamese", "Korean", "Dim Sum", "Filipino", "Taiwanese", "Hot Pot", "Szechuan", "Cantonese", "Malaysian", "Mongolian", "Myanmar", "Pan Asian", "Indonesian", "Teppanyaki", "Singaporean", "Laotian", "Shanghainese", "Izakaya", "Japanese Curry", "Wok", "Tempura", "Tonkatsu")
+
+yelp_tbl_aisan_restaurants = yelp_tbl_restaurants %>%
+  unnest(categories) %>%
+  filter(categories %in% asian_food_categories) %>%
+  dplyr::select(business_id) %>% 
+  distinct() %>% 
+  left_join(yelp_tbl_restaurants, by = "business_id")
+
+```
+
+
+##2.3 Removing non asian food categories
+
+Furthermore, all categories will be removed which are not an Asian food category. 
+```{r}
+
+yelp_tbl_aisan_restaurants$categories = lapply(yelp_tbl_aisan_restaurants$categories, 
+function(x) x[x %in%  asian_food_categories])
+
+```
+
+
+#3 Data Cleaning
+
+##3.1 NA values
+
+Now, in all empty cells, a "NA" value will be imputed, which is a missing value indicator. 
+```{r}
+
+yelp_tbl_aisan_restaurants[yelp_tbl_aisan_restaurants == ""] = NA 
+
+```
+
+
+##3.2 City
+
+Let´s take a look at the column city regarding misspellings (all other columns were checked as well but only the column city had some issues).  
+```{r}
+
+yelp_tbl_aisan_restaurants %>%
+  dplyr::select(city) %>%
+  dplyr::count(city) %>%
+  arrange(-n)
+
+```
+
+As you can see, there are five different spellings. 
+```{r}
+
+yelp_tbl_aisan_restaurants %>%
+  dplyr::select(city) %>%
+  filter(grepl("vega|las ", ignore.case = T, city)) %>%
+  distinct()
+
+```
+
+So all values will be replaced with "Las Vegas". 
+```{r}
+
+yelp_tbl_aisan_restaurants = yelp_tbl_aisan_restaurants %>%
+  mutate(city = ifelse(grepl("vega|las ", ignore.case = T, city), 
+                       "Las Vegas", city))
+  
+```
+
+
+
+#4 Data Enriching
+
+##4.1 attributes
+
+In order to create the mashine learning model, all values of the column attributes will be transfered into their own column. 
+```{r}
+
+yelp_tbl_attributes = yelp_tbl_aisan_restaurants %>%
+  dplyr::select(business_id, attributes) %>%
+  mutate(Num_attributes = length(attributes))
+
+yelp_tbl_attributes = yelp_tbl_attributes %>% 
+  mutate(num_atts = map_int(attributes, length)) %>%
+  filter(num_atts > 0) %>% 
+  unnest(attributes) %>%
+  separate(attributes, into = c("key", "value"), extra = "merge") %>% 
+  spread(key, value) %>%
+  dplyr::select(-num_atts, -Num_attributes)
+
+```
+
+
+###4.1.1 Ambiance, BestNights, BusinessParking, DietaryRestrictions, Music and GoodForMeal
+
+Since the variables of Ambiance, BestNights, BusinessParking, DietaryRestrictions and GoodForMeal are nested (i.e. they variable values are variables itself) the precedure has to be repeated. 
+```{r, warning=FALSE, message=FALSE}
+
+yelp_tbl_attributes = yelp_tbl_attributes %>% 
+  mutate(Ambience = strsplit(str_remove_all(Ambience, '[\'|}]'), ",")) %>%
+  unnest() %>%
+  mutate_at(vars(Ambience), str_trim) %>%
+  separate(Ambience, into = c("key", "value"), extra = "merge", sep = ":") %>%
+  spread(key, value)
+
+yelp_tbl_attributes = yelp_tbl_attributes %>%
+  mutate(Music = strsplit(str_remove_all(Music, '[\'|}]'), ",")) %>%
+  unnest() %>%
+  mutate_at(vars(Music), str_trim) %>%
+  separate(Music, into = c("key", "value"), extra = "merge", sep = ":") %>%
+  spread(key, value)
+
+ yelp_tbl_attributes = yelp_tbl_attributes %>% 
+  mutate(BusinessParking = strsplit(str_remove_all(BusinessParking, '[\'|}]'), ",")) %>%
+  unnest() %>%
+  mutate_at(vars(BusinessParking), str_trim) %>%
+  separate(BusinessParking, into = c("key", "value"), extra = "merge", sep = ":") %>%
+  spread(key, value)
+ 
+yelp_tbl_attributes = yelp_tbl_attributes %>% 
+  mutate(BestNights = strsplit(str_remove_all(BestNights, '[\'|}]'), ",")) %>%
+  unnest() %>%
+  mutate_at(vars(BestNights), str_trim) %>%
+  separate(BestNights, into = c("key", "value"), extra = "merge", sep = ":") %>%
+  spread(key, value)
+
+yelp_tbl_attributes = yelp_tbl_attributes %>% 
+  mutate(DietaryRestrictions = strsplit(str_remove_all(DietaryRestrictions, '[\'|}]'), ",")) %>%
+  unnest() %>%
+  mutate_at(vars(DietaryRestrictions), str_trim) %>%
+  separate(DietaryRestrictions, into = c("key", "value"), extra = "merge", sep = ":") %>%
+  spread(key, value)
+
+yelp_tbl_attributes = yelp_tbl_attributes %>% 
+  mutate(GoodForMeal = strsplit(str_remove_all(GoodForMeal, '[\'|}]'), ",")) %>%
+  unnest() %>%
+  mutate_at(vars(GoodForMeal), str_trim) %>%
+  separate(GoodForMeal, into = c("key", "value"), extra = "merge", sep = ":") %>%
+  spread(key, value) %>%
+  dplyr::select(-`<NA>`)
+
+```
+
+```{r}
+
+yelp = left_join(yelp_tbl_aisan_restaurants, yelp_tbl_attributes, by = "business_id")
+
+```
+
+
+#5 Saving the data frame
+
+As the last step, the dataset will be saved as a "Rda" file. 
+```{r}
+
+colnames(yelp) = make.names(colnames(yelp), unique = T) 
+
+save(yelp, file="yelp.Rda")
+```

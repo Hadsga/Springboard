@@ -1,0 +1,354 @@
+---
+title: "Exploratory Data Analisis"
+output: md_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+load("C:/Users/X1/Desktop/Springboard Data/Yelp/yelp.Rda")
+```
+
+####Packages
+```{r, message=FALSE, warning=FALSE}
+
+library(tidyverse)
+```
+
+```{r}
+
+glimpse(yelp)
+```
+
+
+# Questions of the EDA
+
+Demand: 
+ 
+  - Which categories have the greatest demand (review count)?
+ 
+  - Where (city,state) is the greatest demand (review counts)? 
+
+Popularity:
+ 
+  - Which categories are most popular (stars)?
+ 
+  - Which categories with the greatest demand are most popular (stars)?
+ 
+  - Which categories in which states are most popular (stars)?
+ 
+  - Which categories in which cities are most popular (stars)?
+
+Competition:
+ 
+  - Where is the biggest competition (restaurant appearance)?
+
+Success:
+ 
+  - Exploring the relationship between stars, review count and open/closed. 
+
+
+#1 Demand 
+
+##1.1 Distribution of Review Counts
+
+Distribution of review counts and mean review counts. 
+```{r}
+mean_review_count = mean(yelp$review_count)
+
+yelp %>%
+  ggplot(aes(x = review_count)) +
+  geom_histogram(binwidth = 100, boundary = 0) +
+  xlim(0, 1500) +
+  geom_vline(aes(xintercept = mean_review_count),
+               linetype="dashed", colour="red", size=1) +
+  theme_minimal() 
+```
+
+
+##1.2 Demand per category
+
+Number of reviews per category. 
+```{r}
+
+yelp %>%
+  unnest(categories) %>%
+  group_by(categories) %>%
+  summarise(sum_review_count =  sum(review_count)) %>%
+  ggplot(aes(x = reorder(categories, sum_review_count), y = sum_review_count)) +
+  geom_bar(stat = "identity") +
+  labs(x = "categories", y = "review count") +
+  coord_flip() +
+  theme_minimal()
+
+```
+
+##1.3 Demand per state
+
+Number of reviews per category per state (Top 5). 
+```{r}
+
+yelp %>%
+  unnest(categories) %>%
+  group_by(state, categories) %>%
+  summarise(review_count = sum(review_count)) %>%
+  top_n(5, review_count) %>%
+  ggplot(aes(x = reorder(state, review_count), 
+             y = review_count, 
+             fill = categories)) +
+  scale_fill_brewer(palette = "Paired") +
+  labs(x = "state", y = "review count") +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_minimal()
+
+
+```
+
+##1.4 Demand per city
+
+Number of review counts per category (Top 5) in the cities with the most review counts (Top 10). 
+```{r}
+cities = yelp %>%
+  group_by(city) %>%
+  summarise(n = sum(review_count)) %>%
+  arrange(-n) %>%
+  head(10)
+```
+
+```{r}
+
+yelp %>%
+  filter(city %in% cities$city) %>%
+  unnest(categories) %>%
+  group_by(city, categories) %>%
+  summarise(review_count = sum(review_count)) %>%
+  top_n(5, review_count) %>%
+  ggplot(aes(x = reorder(city, review_count), 
+             y = review_count, fill = categories)) +
+  geom_bar(stat = "identity") +
+  scale_fill_brewer(palette = "Paired") +
+  labs(x = "city", y = "review count") +
+  coord_flip() +
+  theme_minimal()
+```
+
+#2 Popularity
+
+##2.1 Distribution of stars
+
+Distribution of stars and the mean of stars. 
+```{r}
+
+mean_stars = mean(yelp$stars)
+
+yelp %>%
+  count(stars) %>%
+  ggplot(aes(x = stars, y = n)) +
+  geom_bar(stat = "identity") +
+  geom_vline(aes(xintercept = mean_stars),
+               linetype="dashed", colour="red", size=1) +
+  theme_minimal()
+  
+```
+
+
+##2.2 Stars per category
+
+Distribution of stars per category. 
+```{r}
+
+rc = yelp %>%
+  unnest(categories) %>%
+  group_by(categories) %>%
+  summarise(review_count = sum(review_count))
+
+
+rc2 = yelp %>%
+    unnest(categories) %>%
+    group_by(categories, stars) %>%
+    summarise(review_count = sum(review_count))
+
+merge(rc, rc2, by = "categories") %>%
+  ggplot(aes(x = reorder(categories, review_count.y), y = review_count.y, fill = as.factor(stars))) +
+  geom_bar(stat = "identity") +
+  scale_fill_brewer(palette = "Paired") +
+  labs(x = "categories", y = "review count", fill = "stars") +
+  coord_flip() +
+  theme_minimal()
+
+```
+
+##2.3 Mean of stars per state 
+
+Mean of stars in the states with the most review counts (Top 5) per category (Top 5). 
+```{r}
+
+yelp %>%
+  filter(state %in% c("NV", "AZ", "ON", "NC", "PA")) %>%
+  unnest(categories) %>%
+  filter(categories %in% c("Asian Fusion", "Japanese", "Chinese", "Thai", "Sushi Bars")) %>%
+  group_by(state, categories) %>%
+  summarise(mean_stars = mean(stars)) %>%
+  ggplot(aes(y = mean_stars, 
+             x = reorder(state, mean_stars), 
+             fill = categories)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Paired") +
+  labs(x = "state", y = "mean stars", fill = "categories") +
+  theme_minimal() +
+  coord_flip()
+
+```
+
+
+##2.4 Mean stars per city
+
+Mean of stars in the cities with the most review counts (top 10) per category (top 5). 
+```{r}
+
+yelp %>%
+  filter(city %in% c(cities$city)) %>%
+  unnest(categories) %>%
+  filter(categories %in% c("Japanese", "Chinese", "Asian Fusion", "Sushi Bars",
+                           "Thai")) %>%
+  group_by(city, categories) %>%
+  summarise(mean_stars = mean(stars)) %>%
+  ggplot(aes(x = reorder(city, mean_stars), 
+             y = mean_stars, 
+             fill = categories)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Paired") +
+  labs(x = "categories", y = "mean stars", fill = "categories") +
+  coord_flip() +
+  theme_minimal()
+
+```
+
+
+#3 Competition
+
+##3.1 Number of restaurants
+
+Number of restaurants per category. 
+```{r}
+
+yelp %>%
+  unnest(categories) %>%
+  count(categories) %>%
+  ggplot(aes(reorder(categories, n), n)) +
+  geom_bar(stat = "identity") +
+  labs(x = "categories", y = "n") +
+  theme_minimal() +
+  coord_flip()
+
+```
+
+##3.2 Competition per state
+
+Number of restaurants (Top 5) per state. 
+```{r}
+
+yelp %>%
+  unnest(categories) %>%
+  group_by(state) %>%
+  count(categories) %>%
+  top_n(5, n) %>%
+  ggplot(aes(x = reorder(state, n), y = n, fill = categories)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_brewer(palette = "Paired") +
+  labs(x = "state") +
+  theme_minimal() +
+  coord_flip()
+
+```
+
+##3.3 Number of restaurants per city
+
+Number of restaurants per city (Top 10) per category (Top 5). 
+```{r}
+
+yelp %>%
+  filter(city %in% cities$city) %>%
+  unnest(categories) %>%
+  group_by(city) %>%
+  count(categories) %>%
+  top_n(5, n) %>%
+  ggplot(aes(x = reorder(city, n), y = n, fill = categories)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_brewer(palette = "Paired") +
+  labs(x = "state") +
+  theme_minimal() +
+  coord_flip()
+
+```
+
+# 4 Success
+
+##4.1 Relationship between open/closed and review count
+
+Logistic regression between is open and review count. 
+```{r}
+
+yelp %>%
+  ggplot(aes(x = review_count, y = is_open)) +
+  stat_smooth(method = "glm", method.args=list(family="binomial")) +
+  scale_x_continuous(limits = c(0, 1500)) +
+  theme_minimal()
+
+```
+
+##4.2 Relationship between open/closed and stars
+
+Logistic regression between is open and stars. 
+```{r}
+
+yelp %>%
+  ggplot(aes(x = stars, y = is_open)) +
+  stat_smooth(method = "glm", method.args=list(family="binomial")) +
+  theme_minimal()
+
+```
+
+##4.3 Relationship between stars and review count  
+
+Smoothened linear regression between stars and review count. 
+```{r, warning=FALSE, message=FALSE}
+
+yelp %>%
+  ggplot(aes(x = stars , y = review_count)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  theme_minimal()
+
+```
+
+
+#5 Conclusion
+
+Demand:
+
+   - Overall, the greatest demand has the Japanese category. 
+   
+   - The greatest demand is in Las Vegas (NV) for the Japanese category. 
+
+Popularity:
+  
+  - Overall, the Japanese category is most popular. 
+  
+  - In NV the most popular category is Shushi Bars.
+  
+  - In Las Vegas the most popular category is Asian Fusion. 
+
+Competition:
+  
+  - Most of the restaurants are Chinese. 
+  
+  - The most restaurants are in Toronto (ON). 
+
+Success:
+  
+  - Stars and review count are a predictor that a busines survives, where review count     is more important.
+  
+  - There is a strong relationship betweeen stars and review count but only until 4 
+    stars. 
+
