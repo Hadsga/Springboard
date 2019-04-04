@@ -1,0 +1,14 @@
+---
+title: "README"
+output: md_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This task is about wrangling the UCI HAR Dataset. The following files are included:  
+
+- CodeBook: The description of the data and the steps which carried out to wrangle   the data. 
+- run_analysis: An R Script with the code only.
+- tidy_data_set: The finished data set. 
